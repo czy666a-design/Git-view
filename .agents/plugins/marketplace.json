@@ -1,0 +1,20 @@
+{
+  "name": "project-versions-local",
+  "interface": {
+    "displayName": "Git 总览 · 本地开发"
+  },
+  "plugins": [
+    {
+      "name": "project-versions",
+      "source": {
+        "source": "local",
+        "path": "./release/project-versions"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

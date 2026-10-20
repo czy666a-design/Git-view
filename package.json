@@ -1,0 +1,35 @@
+{
+  "name": "project-versions",
+  "version": "0.2.5",
+  "private": true,
+  "type": "module",
+  "description": "在 Codex 工作空间查看真实 Git 分支、提交关系和当前工作树。",
+  "scripts": {
+    "dev": "node --import tsx server/dev.ts",
+    "demo": "node --import tsx scripts/demo.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:ui": "node --import tsx scripts/test-ui.ts",
+    "package": "npm run build && node scripts/package.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/ext-apps": "^1.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "playwright": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

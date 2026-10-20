@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "project-versions": {
+      "command": "node",
+      "args": ["./dist/server.mjs"],
+      "cwd": ".",
+      "tool_timeout_sec": 120
+    }
+  }
+}

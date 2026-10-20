@@ -1,0 +1,26 @@
+{
+  "name": "project-versions",
+  "version": "0.2.5",
+  "description": "在 Codex 工作空间查看真实 Git 分支、提交关系和当前工作树。",
+  "author": {
+    "name": "Project Versions"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Git 总览",
+    "shortDescription": "看清分支关系，找到当前位置",
+    "longDescription": "只读展示当前项目的 Git 提交、分叉、合并与未提交状态。点击查看详情，需要时将所选上下文交给 Codex。",
+    "developerName": "Project Versions",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "defaultPrompt": [
+      "打开当前项目的 Git 分支总览。"
+    ],
+    "brandColor": "#7b86ee"
+  }
+}
