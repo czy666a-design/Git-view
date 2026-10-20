@@ -16,7 +16,7 @@ test('stdio MCP 只暴露读取工具，内嵌资源与真实 ready 状态可读
   const list=await client.listTools();assert.equal(list.tools.length,9);assert.ok(list.tools.every(t=>t.annotations?.readOnlyHint===true));
   for(const name of ['save_project_version','restore_project_version','configure_project_preview','capture_project_preview','initialize_project_versions'])assert.ok(!list.tools.some(t=>t.name===name));
   const resource=await client.readResource({uri:'ui://project-versions/panel.html'});assert.equal(resource.contents[0].mimeType,'text/html;profile=mcp-app');
-  assert.ok('text' in resource.contents[0]&&resource.contents[0].text.includes('<title>Git 总览</title>'));
+  assert.ok('text' in resource.contents[0]&&resource.contents[0].text.includes('<title>Gitview</title>'));
   const result=await client.callTool({name:'open_project_versions',arguments:{projectPath:process.cwd(),threadId:'contract-test'}});const binding=result.structuredContent as any;
   assert.equal(binding.graph.repository.branch,'main');
   const ready=await client.callTool({name:'check_project_versions_ready',arguments:{sessionId:binding.sessionId}});assert.equal((ready.structuredContent as any).ready,false);

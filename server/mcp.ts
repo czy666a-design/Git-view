@@ -11,13 +11,13 @@ export const URI = 'ui://project-versions/panel.html';
 export function createServer(service = new Service(), htmlFile = join(dirname(fileURLToPath(import.meta.url)), 'panel.html')) {
   const server = new McpServer({ name: 'project-versions', version: '0.2.5' });
   const resourceMeta = { ui: { prefersBorder: false, csp: { resourceDomains: [], connectDomains: [] } }, 'openai/ui': { preferredDisplayMode: 'fullscreen', availableDisplayModes: ['fullscreen', 'inline'] }, 'openai/widgetDescription': '当前项目的 Git 提交与分支关系总览。' };
-  registerAppResource(server, 'Git 总览', URI, { mimeType: RESOURCE_MIME_TYPE, _meta: resourceMeta }, async () => ({ contents: [{ uri: URI, mimeType: RESOURCE_MIME_TYPE, text: await readFile(htmlFile, 'utf8'), _meta: resourceMeta }] }));
+  registerAppResource(server, 'Gitview', URI, { mimeType: RESOURCE_MIME_TYPE, _meta: resourceMeta }, async () => ({ contents: [{ uri: URI, mimeType: RESOURCE_MIME_TYPE, text: await readFile(htmlFile, 'utf8'), _meta: resourceMeta }] }));
   const attempt = async (fn: () => Promise<any>) => {
     try { const data = await fn(); return { content: [{ type: 'text' as const, text: '已读取真实 Git 信息。' }], structuredContent: data }; }
     catch (e: any) { return { isError: true, content: [{ type: 'text' as const, text: e.message }], structuredContent: { error: { code: e instanceof AppError ? e.code : 'INTERNAL_ERROR', message: e.message } } }; }
   };
   registerAppTool(server, 'open_project_versions', {
-    title: '打开 Git 总览', description: '在当前 Codex 工作空间打开只读 Git 分支与提交图。可传当前项目根目录的绝对路径和当前 CODEX_THREAD_ID。菜单直接打开时从宿主工作空间解析项目，缺少或不明确时由用户指定。只有客户端 ready 回执才证明面板已连接。',
+    title: '打开 Gitview', description: '在当前 Codex 工作空间打开只读 Git 分支与提交图。可传当前项目根目录的绝对路径和当前 CODEX_THREAD_ID。菜单直接打开时从宿主工作空间解析项目，缺少或不明确时由用户指定。只有客户端 ready 回执才证明面板已连接。',
     inputSchema: { projectPath: z.string().trim().min(1).optional(), threadId: z.string().optional() },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, _meta: { ui: { resourceUri: URI, visibility: ['model', 'app'] }, 'openai/ui': { entrypoints: [{ type: 'thread' }] } },
   }, args => attempt(async () => {

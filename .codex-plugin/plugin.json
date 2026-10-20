@@ -9,7 +9,7 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Git 总览",
+    "displayName": "Gitview",
     "shortDescription": "看清分支关系，找到当前位置",
     "longDescription": "只读展示当前项目的 Git 提交、分叉、合并与未提交状态。点击查看详情，需要时将所选上下文交给 Codex。",
     "developerName": "Project Versions",
@@ -19,7 +19,7 @@
       "Read"
     ],
     "defaultPrompt": [
-      "打开当前项目的 Git 分支总览。"
+      "打开当前项目的 Gitview。"
     ],
     "brandColor": "#7b86ee"
   }

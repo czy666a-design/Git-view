@@ -31,4 +31,4 @@ const server = createServer(async (req,res) => {
   if (req.url === '/host' && req.method === 'GET') { res.setHeader('Content-Type','text/html; charset=utf-8'); res.end(`<!doctype html><html><head><meta charset="utf-8"></head><body><script type="module">${hostBundle.outputFiles[0].text.replace(/<\/script/gi,'<\\/script')}</script></body></html>`); return; }
   res.writeHead(404).end();
 });
-server.listen(Number(process.env.PORT || 4173),'127.0.0.1',() => console.log(`Git 总览开发入口：http://127.0.0.1:${(server.address() as any).port}/#dev=${token}`));
+server.listen(Number(process.env.PORT || 4173),'127.0.0.1',() => console.log(`Gitview开发入口：http://127.0.0.1:${(server.address() as any).port}/#dev=${token}`));

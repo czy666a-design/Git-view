@@ -14,7 +14,7 @@ export class Service {
   }
   async call(action: string, params: Record<string, any>): Promise<Record<string, any>> {
     const session = this.sessions.get(params.sessionId);
-    if (!session) throw new AppError('SESSION_EXPIRED', '连接已过期，请从当前聊天重新打开 Git 总览。');
+    if (!session) throw new AppError('SESSION_EXPIRED', '连接已过期，请从当前聊天重新打开 Gitview。');
     const project = session.project;
     switch (action) {
       case 'graph': return { graph: await this.reader.graph(project, params.query) };
