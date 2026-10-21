@@ -9,7 +9,7 @@ import { Service } from './service.js';
 import { AppError } from './types.js';
 export const URI = 'ui://project-versions/panel.html';
 export function createServer(service = new Service(), htmlFile = join(dirname(fileURLToPath(import.meta.url)), 'panel.html')) {
-  const server = new McpServer({ name: 'project-versions', version: '0.2.6' });
+  const server = new McpServer({ name: 'project-versions', version: '0.2.8' });
   const resourceMeta = { ui: { prefersBorder: false, csp: { resourceDomains: [], connectDomains: [] } }, 'openai/ui': { preferredDisplayMode: 'fullscreen', availableDisplayModes: ['fullscreen', 'inline'] }, 'openai/widgetDescription': '当前项目的 Git 提交与分支关系总览。' };
   registerAppResource(server, 'Gitview', URI, { mimeType: RESOURCE_MIME_TYPE, _meta: resourceMeta }, async () => ({ contents: [{ uri: URI, mimeType: RESOURCE_MIME_TYPE, text: await readFile(htmlFile, 'utf8'), _meta: resourceMeta }] }));
   const attempt = async (fn: () => Promise<any>) => {

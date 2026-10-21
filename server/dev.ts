@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { Service } from './service.js';
-const service = new Service(); const binding = await service.open(resolve(process.argv[2] || process.cwd()));
+const service = new Service(); const binding = await service.open(resolve(process.argv[2] || process.cwd()), process.env.PROJECT_VERSIONS_DEV_THREAD);
 const token = randomBytes(32).toString('hex');
 const hostBundle = await build({ entryPoints: ['scripts/mcp-host.ts'], bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022' });
 const server = createServer(async (req,res) => {
@@ -19,7 +19,15 @@ const server = createServer(async (req,res) => {
       const { action, ...params } = JSON.parse(body);
       let data;
       if (action === 'binding') data = { ...binding, graph: await service.reader.graph(binding.graph.repository.path) };
-      else if (action === 'open') data = await service.openWorktree(params.sessionId || binding.sessionId, params.projectPath);
+      else if (action === 'expire' && process.env.PROJECT_VERSIONS_TEST_RESET === '1') { service.sessions.clear(); data = { expired: true }; }
+      else if (action === 'open' || action === 'reopen') {
+        if (params.sessionId) data = await service.openWorktree(params.sessionId, params.projectPath);
+        else {
+          const path = resolve(params.projectPath);
+          if (path !== binding.graph.repository.path && !binding.graph.repository.worktrees.some(worktree => worktree.path === path)) throw new Error('开发宿主仅允许读取当前测试仓库的工作树。');
+          data = await service.open(path, params.threadId);
+        }
+      }
       else data = await service.call(action, { ...params, sessionId: params.sessionId || binding.sessionId });
       res.setHeader('Content-Type','application/json'); res.end(JSON.stringify(data));
     } catch(e:any) { res.writeHead(400,{'Content-Type':'application/json'}).end(JSON.stringify({error:{code:e.code || 'ERROR',message:e.message}})); }

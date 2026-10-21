@@ -106,3 +106,27 @@ test('聊天显式工作树优先于主项目环境，面板重绑保留聊天�
   assert.deepEqual(readHeads(), heads);
  } finally { await client.close(); await rm(root, {recursive:true,force:true}); }
 });
+
+test('服务进程重启后可不带旧会话重开原工作树，恢复聊天及 ready 回执', async () => {
+ const root = await realpath(await mkdtemp(join(tmpdir(), 'session-recovery-')));
+ const project = join(root, '主项目'); const worktree = join(root, 'Function');
+ const bundleRoot = process.env.MCP_BUNDLE_DIR || resolve('dist');
+ let client = new Client({name:'session-recovery-test',version:'1.0.0'});
+ const connect = async () => client.connect(new StdioClientTransport({command:process.execPath,args:[resolve(bundleRoot,'server.mjs')],cwd:bundleRoot,stderr:'pipe'}));
+ try {
+  const ids = await createFixture(project, false);
+  fixtureGit(project, ['worktree', 'add', '-b', 'Function', worktree, ids.main]);
+  await connect();
+  const previous = (await client.callTool({name:'open_project_versions',arguments:{projectPath:worktree,threadId:'recovery-chat'}})).structuredContent as any;
+  assert.equal(previous.threadId, 'recovery-chat');
+  await client.close(); client = new Client({name:'session-recovery-test',version:'1.0.0'}); await connect();
+  const expired = await client.callTool({name:'get_git_graph',arguments:{sessionId:previous.sessionId}});
+  assert.equal(expired.isError, true); assert.equal((expired.structuredContent as any).error.code, 'SESSION_EXPIRED');
+  const reopened = (await client.callTool({name:'open_project_versions',arguments:{projectPath:previous.graph.repository.path,threadId:previous.threadId}})).structuredContent as any;
+  assert.notEqual(reopened.sessionId, previous.sessionId); assert.equal(reopened.threadId, 'recovery-chat');
+  assert.equal(reopened.graph.repository.path, worktree); assert.equal(reopened.graph.repository.branch, 'Function'); assert.equal(reopened.graph.repository.head, ids.main);
+  const receipt = (await client.callTool({name:'project_versions_ready',arguments:{sessionId:reopened.sessionId,hostName:'recovery-test-host'}})).structuredContent as any;
+  assert.equal(receipt.ready,true); assert.equal(receipt.threadId,'recovery-chat'); assert.equal(receipt.projectPath,worktree);
+  assert.equal((await client.callTool({name:'get_git_graph',arguments:{sessionId:reopened.sessionId}})).isError,undefined);
+ } finally { await client.close(); await rm(root,{recursive:true,force:true}); }
+});

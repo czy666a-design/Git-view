@@ -42,6 +42,9 @@ function Panel() {
   const [graph, setGraph] = useState<GraphData>(); const [connected, setConnected] = useState(false); const ready = useRef('');
   const [bindingId, setBindingId] = useState(''); const bindingRef = useRef('');
   const switchingWorktree = useRef(false);
+  const threadRef = useRef<string | undefined>(undefined); const reconnecting = useRef(false);
+  const [retryMode, setRetryMode] = useState<'read' | 'reconnect' | 'none'>('read');
+  const retryModeRef = useRef<'read' | 'reconnect' | 'none'>('read');
   const [query, setQuery] = useState<GraphQuery>({}); const queryRef = useRef<GraphQuery>({});
   const [selection, setSelection] = useState<Selection>(); const [detailOpen, setDetailOpen] = useState(false); const [detail, setDetail] = useState<CommitDetail | BranchDetail | WorkingDetail>();
   const [base, setBase] = useState<string>(); const [openFile, setOpenFile] = useState<string>(); const [diff, setDiff] = useState<DiffData>(); const [diffBusy, setDiffBusy] = useState(false);
@@ -53,10 +56,19 @@ function Panel() {
   const graphSeq = useRef(0), detailSeq = useRef(0), diffSeq = useRef(0); const graphRef = useRef<GraphData | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null); const panelRef = useRef<HTMLElement>(null); const draftRef = useRef<HTMLDialogElement>(null); const selectionRef = useRef<Selection | undefined>(undefined);
   graphRef.current = graph; selectionRef.current = selection;
+  const readError = (failure: any, reconnectFailed = false) => {
+    setNotice('');
+    const terminal = reconnectFailed || ['NOT_CONNECTED', 'GIT_MISSING', 'INVALID_PATH', 'PROJECT_UNAVAILABLE', 'BARE_REPOSITORY', 'NESTED_PROJECT'].includes(failure.code);
+    const mode = terminal ? 'none' : failure.code === 'SESSION_EXPIRED' ? 'reconnect' : 'read';
+    retryModeRef.current = mode; setRetryMode(mode);
+    setError(reconnectFailed ? '无法重新建立连接，请从当前聊天重新打开 Gitview。' : mode === 'reconnect' ? '连接已过期，重新读取将重新连接当前工作树。' : failure.message);
+  };
   const accept = (data: Record<string, any>) => {
     if (data.graph) {
       if (data.sessionId && data.sessionId !== bindingRef.current) {
         bindingRef.current = data.sessionId; setBindingId(data.sessionId);
+        threadRef.current = data.threadId;
+        retryModeRef.current = 'read'; setRetryMode('read');
         ++graphSeq.current; ++detailSeq.current; ++diffSeq.current;
         queryRef.current = {}; setQuery({}); selectionRef.current = undefined;
         setSelection(undefined); setDetailOpen(false); setDetail(undefined); setBase(undefined);
@@ -68,10 +80,24 @@ function Panel() {
     } else if (data.projectRequired) setProjectRequired(true);
   };
   useEffect(() => { connect(accept, () => setConnected(true)).catch(e => setError(e.message)); const timer = setTimeout(() => setSlow(true), 10000); return () => clearTimeout(timer); }, []);
-  useEffect(() => { if (connected && graph && bindingId && ready.current !== bindingId) { ready.current = bindingId; request('ready', { hostName: hostName() }).catch(() => {}); } }, [connected, graph, bindingId]);
+  useEffect(() => { if (connected && graph && bindingId && ready.current !== bindingId) { ready.current = bindingId; request('ready', { hostName: hostName() }).catch(failure => { if (bindingRef.current === bindingId) readError(failure); }); } }, [connected, graph, bindingId]);
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 5500); return () => clearTimeout(timer); }, [notice]);
+  const reopen = async () => {
+    const project = graphRef.current?.repository.path;
+    if (!project || reconnecting.current) return;
+    reconnecting.current = true;
+    const seq = ++graphSeq.current; setBusy(true);
+    try {
+      const result = await request('reopen', { projectPath: project, threadId: threadRef.current });
+      if (seq !== graphSeq.current) return;
+      if (!result.sessionId || result.graph?.repository.path !== project) throw new Error('未能恢复原工作树的连接。');
+      accept(result); setNotice('已重新连接并读取当前工作树。');
+    } catch (failure) { if (seq === graphSeq.current) readError(failure, true); }
+    finally { reconnecting.current = false; if (seq === graphSeq.current) setBusy(false); }
+  };
   const load = async (next: GraphQuery = queryRef.current, append = false, locate = false) => {
-    if (switchingWorktree.current) return;
+    if (switchingWorktree.current || reconnecting.current || retryModeRef.current === 'none') return;
+    if (retryModeRef.current === 'reconnect') { await reopen(); return; }
     const seq = ++graphSeq.current; setBusy(true); setError('');
     const viewport = scrollRef.current; const previousGraph = graphRef.current;
     const preserve = !append && !locate && next === queryRef.current;
@@ -85,7 +111,7 @@ function Panel() {
       setSelection(previous => { if (previous?.kind !== 'branch') return previous; const ref = incoming.refs.find(r => r.name === previous.name); return ref ? { ...previous, id: ref.commitId } : undefined; });
       if (preserve && topId) requestAnimationFrame(() => { const row = document.getElementById(`commit-${topId}`); if (row && viewport) viewport.scrollTop += row.getBoundingClientRect().top - viewport.getBoundingClientRect().top - topOffset; });
       if (locate && incoming.repository.head) requestAnimationFrame(() => document.getElementById(`commit-${incoming.repository.head}`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'instant' : 'smooth' }));
-    } catch (e: any) { if (seq === graphSeq.current) setError(e.message); }
+    } catch (e: any) { if (seq === graphSeq.current) readError(e); }
     finally { if (seq === graphSeq.current) setBusy(false); }
   };
   const changeQuery = (next: GraphQuery) => { queryRef.current = next; setQuery(next); setRefPopover(undefined); scrollRef.current?.scrollTo({ top: 0 }); load(next); };
@@ -97,11 +123,11 @@ function Panel() {
       const result = await request('open', { projectPath: path });
       if (seq !== graphSeq.current) return;
       accept(result); setNotice('已更改查看的工作树。');
-    } catch (e: any) { if (seq === graphSeq.current) setError(e.message); }
+    } catch (e: any) { if (seq === graphSeq.current) readError(e); }
     finally { switchingWorktree.current = false; if (seq === graphSeq.current) setBusy(false); }
   };
   useEffect(() => {
-    const refresh = () => { if (graphRef.current && document.visibilityState === 'visible' && !draftRef.current?.open) load(queryRef.current); };
+    const refresh = () => { if (graphRef.current && retryModeRef.current === 'read' && document.visibilityState === 'visible' && !draftRef.current?.open) load(queryRef.current); };
     window.addEventListener('focus', refresh); return () => window.removeEventListener('focus', refresh);
   }, []);
   useEffect(() => {
@@ -155,17 +181,17 @@ function Panel() {
   })}</div>;
 
   if (!graph && projectRequired) return <div className="connecting project-binding"><Icon name="branch" size={26}/><h1>打开 Gitview</h1><p>宿主尚未提供当前项目目录。请选择这次要查看的项目。</p><form onSubmit={async event => { event.preventDefault(); setBusy(true); setError(''); try { accept(await request('open', { projectPath: projectPath.trim() })); } catch (e: any) { setError(e.message); } finally { setBusy(false); } }}><label htmlFor="project-root">项目文件夹的绝对路径</label><input id="project-root" autoFocus value={projectPath} onChange={event => setProjectPath(event.target.value)} placeholder="/Users/你/项目文件夹"/>{error && <p role="alert">{error}</p>}<button className="primary" disabled={busy || !projectPath.trim()}>{busy ? '正在读取…' : '打开项目'}</button></form></div>;
-  if (!graph) return <div className="connecting"><Icon name="branch" size={26}/><h1>Gitview</h1><p>{error || (slow ? '尚未收到项目数据，请从当前聊天重新打开面板。' : '正在读取项目分支…')}</p>{error && <button className="secondary" onClick={() => location.reload()}>重新连接</button>}</div>;
+  if (!graph) return <div className="connecting"><Icon name="branch" size={26}/><h1>Gitview</h1><p>{error || (slow ? '尚未收到项目数据，请从当前聊天重新打开面板。' : '正在读取项目分支…')}</p></div>;
   const repository = graph.repository;
   return <div className={`app ${selection && detailOpen ? 'has-detail' : ''}`}>
-    <header className="header"><div className="brand"><strong>Gitview</strong><span className="separator"/><span className="project-name" title={repository.path}>{repository.name}</span></div><button className={`icon-button ${busy ? 'spinning' : ''}`} aria-label="刷新 Git 信息" title="刷新 Git 信息" onClick={() => load()} disabled={busy}><Icon name="refresh" size={18}/></button></header>
+    <header className="header"><div className="brand"><strong>Gitview</strong><span className="separator"/><span className="project-name" title={repository.path}>{repository.name}</span></div><button className={`icon-button ${busy ? 'spinning' : ''}`} aria-label="刷新 Git 信息" title="刷新 Git 信息" onClick={() => load()} disabled={busy || retryMode === 'none'}><Icon name="refresh" size={18}/></button></header>
     <div className="worktree-bar"><span className="worktree-label">查看工作树</span>{repository.worktrees.length ? <Select label="查看工作树" value={repository.path} disabled={busy} onChange={viewWorktree} options={repository.worktrees.map(worktree => ({ value: worktree.path, label: worktree.branch?.replace(/^refs\/heads\//, '') || (worktree.detached ? '游离 HEAD' : '无分支'), description: worktree.path }))}/> : <span title={repository.path}>{repository.path}</span>}</div>
     <div className="repository-bar"><div className="current-branch"><Icon name="branch" size={15}/><strong title={repository.branch}>{repository.initialized ? repository.branch || '未处于分支' : '未启用 Git'}</strong><span className="here-dot"/><span className="subtle">工作树 HEAD</span></div>{repository.head && <div className="head-state"><code>{repository.head.slice(0,7)}</code><span className="subtle">{date(repository.lastCommitAt)}</span></div>}<button className={`working-count ${repository.changes.conflicts ? 'conflicted' : ''}`} onClick={() => choose({ kind: 'working' })}><span className={`working-dot ${repository.changes.total ? 'dirty' : ''}`}/>{repository.changes.total ? `${repository.changes.total} 个文件未提交` : '没有未提交修改'}<Icon name="arrow" size={11}/></button></div>
     {repository.operation && <div className="operation-notice"><span className="working-dot dirty"/>{repository.operation}</div>}
     <div className="workspace">
       <main className="graph-pane">
         <div className="toolbar"><div className="branch-filter"><Select label="筛选分支" variant="quiet" disabled={busy} value={query.branch || ''} onChange={branch => changeQuery({ ...query, branch: branch || undefined })} options={[{ value: '', label: `全部本地分支 · ${graph.refs.filter(r => r.kind === 'local').length}` }, ...graph.refs.filter(r => r.kind === 'local' || (query.includeRemote && r.kind === 'remote')).map(ref => ({ value: ref.name, label: ref.label }))]}/></div><div className="toolbar-actions"><label className="remote-switch" title={`远程信息来自本机记录，读取于 ${date(repository.observedAt)}`}><input type="checkbox" disabled={busy} checked={!!query.includeRemote} onChange={e => changeQuery({ includeRemote: e.target.checked })}/><Icon name="cloud" size={14}/><span>显示远程</span></label><button className="text-button locate-button" aria-label="定位当前" title="定位当前" disabled={!repository.head || busy} onClick={() => { const exists = graph.commits.some(c => c.id === repository.head); if (exists && !query.branch) document.getElementById(`commit-${repository.head}`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion:reduce)').matches ? 'instant' : 'smooth' }); else { const next = { includeRemote: query.includeRemote }; queryRef.current = next; setQuery(next); load({ ...next, anchor: repository.head }, false, true); } }}><Icon name="locate" size={14}/><span>定位当前</span></button></div></div>
-        {error && <div className="error-banner" role="alert">{error}<button className="text-button" onClick={() => load()}>重新读取</button></div>}
+        {error && <div className="error-banner" role="alert">{error}{retryMode !== 'none' && <button className="text-button" onClick={() => load()} disabled={busy}>{busy && retryMode === 'reconnect' ? '正在重新连接…' : '重新读取'}</button>}</div>}
         {query.includeRemote && <div className="remote-notice">远程为本机记录 · 读取于 {date(repository.observedAt)}</div>}
         <div className="graph-scroll" ref={scrollRef} onClick={() => { if (refPopover) setRefPopover(undefined); }}>
           {graph.offset > 0 && <button className="history-window" onClick={() => load(queryRef.current)}>↑ 当前查看历史中的一段 · 回到最新位置</button>}

@@ -12,7 +12,7 @@ export class Service {
     const project = await canonicalProject(projectPath); const sessionId = randomUUID();
     const graph = await this.reader.graph(project);
     this.sessions.set(sessionId, { project, threadId, ready: false });
-    return { sessionId, graph };
+    return { sessionId, threadId, graph };
   }
   async openWorktree(sessionId: string, projectPath: string) {
     const session = this.sessions.get(sessionId);
