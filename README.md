@@ -12,7 +12,7 @@
 ### 推荐用法：从项目对话打开
 
 1. 在 Codex 中打开要查看的项目，进入该项目的对话。
-2. 发送「打开当前项目的 Git 总览」。Codex 会将当前项目的 Git 根目录和聊天标识传给插件，无需手填路径。
+2. 发送「打开当前项目的 Git 总览」。Codex 会将当前聊天实际工作树的 Git 根目录和聊天标识传给插件，无需手填路径；worktree 聊天使用自身目录，不替换为主项目目录。
 3. 面板打开后即可查看；以后重新打开项目或换到另一个项目时，在对应对话中再发起一次。
 
 如果当前对话没有绑定项目，需先打开项目，或明确告诉 Codex 要查看的项目绝对路径。插件无法从一个没有项目上下文的对话判断目标仓库。
@@ -36,8 +36,8 @@
 
 ### 查看与后续操作
 
-1. 确认顶部项目名和当前分支是本次要查看的项目。
-2. 默认看到全部本地分支，每个节点是一次提交；「你在这里」标明当前工作树的 HEAD。
+1. 确认顶部项目名及“查看工作树”中的分支、目录是本次要查看的对象。可选择同仓库的其他工作树；选择只改变查看对象，不切换 Git 分支。
+2. 默认看到全部本地分支，每个节点是一次提交；“工作树 HEAD”标明当前查看目录的 HEAD。
 3. 点击分支名查看关系与进展，点击提交查看说明和文件。未提交修改单独用虚线入口展示。
 4. 「显示远程」展示本机已有的远程引用，不自动联网更新。
 5. 「交给 Codex」先打开可编辑请求草稿，包含所选对象、项目路径、当前分支和 HEAD。确认发送后，Codex 再检查现场并按请求处理。普通浏览器可复制请求。
@@ -45,6 +45,12 @@
 打开、重新获得焦点或手动刷新时读取状态。分支筛选和定位只改变视图。
 
 例如，可以在「交给 Codex」的草稿里写「解释这次提交改了什么」「比较这个分支与当前分支」或「我想在这个分支继续开发，请先检查当前状态」。插件负责传递上下文；Git 操作由 Codex 根据你的请求执行。
+
+### 工作树与聊天的对应关系
+
+从 0.2.6 起，面板顶部显示“查看工作树”，列出同仓库各工作树的分支和完整目录，并以“工作树 HEAD”标记所选目录的位置。多个工作树共享分支与提交历史，各自的 HEAD 和未提交修改独立：即使图里能看到 `Function` 的提交，也不代表面板正在读取 `Function` 工作树。
+
+面板绑定打开时指定的目录，不会因切换聊天而自动重绑。若聊天位于 `Function` 而面板显示另一工作树，可在选择框改为对应目录，或从该聊天重新请求打开。更换查看对象后，HEAD、未提交修改及交给 Codex 的上下文一起更新，旧筛选与详情清除；读取失败时保留原视图。现有 MCP 工具仍只读，选择不会执行 checkout、暂存或提交。
 
 ### 配套开发收尾技能
 
@@ -71,6 +77,7 @@ good-readme 的 `scripts/inspect_readme_context.py` 和 `references/readme-contr
 - **出现项目路径输入页：** 使用了未带入项目目录的入口。推荐回到项目对话说「打开当前项目的 Git 总览」；继续使用该页则需要填写绝对路径。反复重启不会补上缺失的项目上下文。
 - **显示“未能显示”或一直无法连接：** 与路径输入页不同，这是启动或面板连接问题。安装或更新后若仍在使用旧服务，可完全退出 Codex 后重开，再从项目对话打开；仍失败时请 Codex 检查最新启动日志及 `check_project_versions_ready` 回执，不能仅凭“插件已启用”认定连接正常。
 - **没有提交关系图：** 确认项目已有 Git 提交。只有未提交文件、尚无第一次提交的仓库没有提交节点；插件不会自动创建提交。
+- **面板分支与当前聊天不同：** 核对“查看工作树”中的实际目录。切换到该聊天的工作树，或从对应聊天重新打开；刷新只读取面板原来绑定的目录。
 - **Codex 操作后图没更新：** 点击刷新。重新打开时，请在目标项目的对话中发起，避免沿用另一个项目的面板。
 
 ### 提交说明规范与自动生成
@@ -149,7 +156,7 @@ codex plugin marketplace add .
 codex plugin add project-versions@project-versions-local
 ```
 
-插件 ID 保持 `project-versions`，显示名为「Git 总览」，版本为 0.2.5。安装包是 `release/project-versions-0.2.5.zip`，运行时不需要 node_modules。
+插件 ID 保持 `project-versions`，显示名为「Git 总览」，版本为 0.2.6。安装包是 `release/project-versions-0.2.6.zip`，运行时不需要 node_modules。
 
 本地插件安装或更新后，需要用新会话加载工具；桌面宿主没有更新本地内容时需重新启动应用。参考 [官方插件文档](https://learn.chatgpt.com/docs/plugins) 与 [本地插件打包说明](https://developers.openai.com/plugins/build/plugins)。CLI 的安装结果与 MCP Apps 测试宿主不等于 Codex 原生面板验收，具体结果见 `docs/verification.md`。
 
@@ -159,7 +166,7 @@ codex plugin add project-versions@project-versions-local
 
 - 面板和 MCP 服务不初始化、暂存、提交、切换、合并、恢复或 fetch，不提供这些写入工具。
 - Git 通过 GIT_OPTIONAL_LOCKS=0 运行读取命令；关闭 fsmonitor、外部 diff 和 textconv，禁止自动延迟 fetch。
-- 当前工作树与其他工作树的分支占用分开展示；其他工作树仅列路径和引用，不读取其未提交文件。
+- 当前查看工作树与其他工作树的分支占用分开展示；未选中的工作树仅列路径和引用，选择后才读取该目录的 HEAD 与未提交修改。
 - 浅克隆边界有明确标记；缺失历史不会显示为真实根提交。
 - 默认每批 100 条提交，可继续加载，支持按 HEAD 定位到历史窗口。游标关联引用快照，分支变化后需刷新。
 - 超过 1 MB 的文件及二进制文件按状态展示，长文本差异最多显示前 100,000 字符。
@@ -200,7 +207,7 @@ View real Git commits and branch relationships in the Codex workspace: your curr
 ### Recommended: open from a project chat
 
 1. Open the target project in Codex and enter a chat belonging to that project.
-2. Ask “Open the current project's Git overview.” Codex supplies the Git root and chat identifier without manual path entry.
+2. Ask “Open the current project's Git overview.” Codex supplies the current chat's actual worktree root and chat identifier without manual path entry; a worktree chat keeps its own directory rather than substituting the main project directory.
 3. View the panel. When reopening or switching projects, launch it again from the corresponding project chat.
 
 If the chat has no project context, first open the project or explicitly supply the target project's absolute path. The plugin cannot determine the target repository from a projectless chat.
@@ -224,8 +231,8 @@ The launch configuration's `cwd: "."` locates plugin service files; it is not th
 
 ### Viewing and follow-up operations
 
-1. Confirm that the project name and current branch at the top match your target.
-2. All local branches are shown by default. Each node is a commit; “You are here” marks this worktree's HEAD.
+1. Confirm that the project name and branch/directory in “View worktree” match your target. You can select another worktree in the same repository; this changes only the view, without checking out a Git branch.
+2. All local branches are shown by default. Each node is a commit; “Worktree HEAD” marks the HEAD of the directory being viewed.
 3. Select a branch to inspect its relationships and progress, or a commit to inspect its message and files. Uncommitted changes have a separate dashed entry.
 4. “Show remote” displays locally recorded remote refs; it does not fetch updates.
 5. “Hand to Codex” opens an editable request draft containing the selected object, project path, current branch, and HEAD. After you send it, Codex rechecks the actual state before acting. In an ordinary browser, you can copy the request.
@@ -233,6 +240,12 @@ The launch configuration's `cwd: "."` locates plugin service files; it is not th
 State is read when opening, regaining focus, or refreshing manually. Filtering and locating branches only change the view.
 
 For example, ask the handoff draft to explain a commit, compare a branch with the current one, or check the state before continuing work on a branch. The plugin passes context; Codex executes Git operations according to your request.
+
+### Worktrees and chat context
+
+Starting with 0.2.6, “View worktree” at the top lists branches and full directories of worktrees in the same repository. “Worktree HEAD” marks the selected directory's position. Worktrees share branches and commit history but have independent HEADs and uncommitted changes: seeing `Function` commits in the graph does not establish that the panel is reading the `Function` worktree.
+
+The panel remains bound to the directory specified when opening; switching chats does not automatically rebind it. If the chat is on `Function` but the panel shows another worktree, select the matching directory or reopen from that chat. Changing the view updates HEAD, uncommitted changes, and Codex handoff context together, clearing old filters and details. A failed read preserves the original view. The existing MCP tools remain read-only; selecting a directory does not check out, stage, or commit.
 
 ### Bundled development completion skills
 
@@ -259,6 +272,7 @@ To verify that the plugin versions actually handle documentation checks and loca
 - **Project path entry page:** The entry point did not supply a project directory. Return to a project chat and ask to open Git overview, or provide an absolute path on that page. Repeated restarts cannot supply missing project context.
 - **“Could not display” or persistent connection failure:** This is a startup or panel connection problem, unlike the path entry page. If an old service remains after installation or update, fully quit and reopen Codex, then launch from a project chat. If it still fails, ask Codex to inspect startup logs and the `check_project_versions_ready` receipt; “plugin enabled” alone does not prove a working connection.
 - **No commit graph:** Confirm that the project has Git commits. A repository with uncommitted files but no first commit has no commit nodes; the plugin does not create commits automatically.
+- **Panel branch differs from the current chat:** Check the actual directory in “View worktree”. Select the chat's worktree or reopen from that chat; refresh only reads the panel's existing directory.
 - **Graph unchanged after Codex operations:** Refresh the panel. Reopen it from the target project's chat to avoid reusing a panel for another project.
 
 ### Commit message conventions and automatic generation
@@ -337,7 +351,7 @@ codex plugin marketplace add .
 codex plugin add project-versions@project-versions-local
 ```
 
-Plugin ID remains `project-versions`, display name is “Git 总览”, and version is 0.2.5. The package is `release/project-versions-0.2.5.zip`; runtime does not require node_modules.
+Plugin ID remains `project-versions`, display name is “Git 总览”, and version is 0.2.6. The package is `release/project-versions-0.2.6.zip`; runtime does not require node_modules.
 
 After local installation or update, load tools in a new session; restart the desktop app if the host retains old content. See the [official plugin documentation](https://learn.chatgpt.com/docs/plugins) and [local packaging guide](https://developers.openai.com/plugins/build/plugins). CLI installation and MCP Apps test-host results do not establish native Codex panel acceptance; see `docs/verification.md` for actual results.
 
@@ -347,7 +361,7 @@ This section describes the panel and MCP service. Documentation edits and Git co
 
 - The panel and MCP service do not initialize, stage, commit, switch, merge, restore, or fetch, and expose no such write tools.
 - Git read commands use GIT_OPTIONAL_LOCKS=0, disable fsmonitor, external diff and textconv, and prohibit automatic lazy fetch.
-- Current and other worktrees' branch occupancy are shown separately. Other worktrees expose only paths and refs, not their uncommitted files.
+- Branch occupancy of the viewed worktree and other worktrees is shown separately. Unselected worktrees expose only paths and refs; their HEAD and uncommitted changes are read after selection.
 - Shallow boundaries are marked; missing history is not presented as a real root commit.
 - Each batch defaults to 100 commits with continued loading and HEAD location. Cursors are tied to a ref snapshot; branch changes require refresh.
 - Files over 1 MB and binary files are represented by status; text diffs display at most 100,000 characters.

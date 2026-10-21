@@ -9,11 +9,12 @@ description: 打开当前项目的 Git 总览，查看真实分支、提交、�
 
 ## 打开
 
-1. 从当前工作空间确定 Git 根目录，读取当前任务的 CODEX_THREAD_ID，调用 `open_project_versions(projectPath, threadId)`。
+1. 读取当前聊天运行时提供的实际工作目录（必要时用 `pwd` 核对），在该目录执行 `git rev-parse --show-toplevel`，将结果原样作为 `projectPath`，并读取当前任务的 CODEX_THREAD_ID，调用 `open_project_versions(projectPath, threadId)`。使用 worktree 聊天时必须保留该 worktree 的根目录，不得换成保存的主项目路径、`git-common-dir` 或其他聊天的路径；不根据聊天标题或分支名猜目录。
 2. 调用 `check_project_versions_ready(sessionId)` 核实客户端回执。ready=true 且宿主是当前 Codex、项目和 threadId 一致，才能报告原生面板已连接。测试宿主及浏览器预览需单独说明。
 3. 发现工具尚未加载时说明需要在已安装插件的新会话中测试，不能用其他浏览器入口冒充原生面板。
 4. 新标签页菜单可无参数启动；插件优先使用宿主 MCP roots 或 CODEX_WORKSPACE_DIR。stdio 启动配置使用 `cwd: "."` 和插件根目录下的相对入口；若宿主没有提供项目目录，显示项目绑定页，不使用插件安装目录或上一项目作为默认。
 5. 未启用 Git 的目录仍可显示空态，不初始化仓库，不索取署名或预览地址。
+6. 打开后核对返回的 `graph.repository.path`、`branch` 和 `head` 与当前聊天实际工作树一致，再检查 ready 回执。面板的“工作树 HEAD”表示当前查看目录的 HEAD，不承诺跟随聊天切换。用户可通过“查看工作树”选择同仓库另一目录；这是切换查看对象，不执行 checkout，不自动认定它属于当前聊天。
 
 ## 阅读
 

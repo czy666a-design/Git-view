@@ -8,10 +8,11 @@ import { join,resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createFixture,fixtureGit as git } from '../tests/fixture.js';
 const root=await realpath(await mkdtemp(join(tmpdir(),'git-overview-ui-')));const project=join(root,'design-system');const ids=await createFixture(project);
+const worktree=join(root,'Function 工作树');git(project,['worktree','add','-b','Function',worktree,ids.main]);await writeFile(join(worktree,'function-only.txt'),'Function working tree\n');
 const longRemote='desktop/desktop/home-orbit-very-long-feature-name-for-component-documentation-and-design-sync';
 for(const name of [longRemote,'desktop/desktop/home-orbit','backup/component-gallery'])git(project,['update-ref',`refs/remotes/${name}`,ids.current]);
 const artifacts=resolve(process.env.UI_ARTIFACTS || 'artifacts/git-overview');await mkdir(artifacts,{recursive:true});
-async function fingerprint(){const hash=createHash('sha256');async function walk(path:string){for(const file of(await readdir(path,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const full=join(path,file.name);hash.update(full);if(file.isDirectory())await walk(full);else if(file.isFile())hash.update(await readFile(full));}}await walk(project);return hash.digest('hex');}
+async function fingerprint(){const hash=createHash('sha256');async function walk(path:string){for(const file of(await readdir(path,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const full=join(path,file.name);hash.update(full);if(file.isDirectory())await walk(full);else if(file.isFile())hash.update(await readFile(full));}}await walk(project);await walk(worktree);return hash.digest('hex');}
 let browser;let child:ReturnType<typeof spawn>|undefined;const report:any={started:new Date().toISOString(),checks:[]};
 try{
  const initial=await fingerprint();
@@ -56,6 +57,41 @@ try{
  await frame.getByLabel('你想让 Codex 做什么？').fill('请比较这个提交与当前分支，先检查 Git 状态。');await frame.getByRole('button',{name:'发送到当前聊天',exact:true}).click();await host.waitForFunction(()=>((window as any).__messages||[]).length===1);const messages=await host.evaluate(()=>(window as any).__messages);assert.ok(JSON.stringify(messages).includes(ids.current));assert.ok(JSON.stringify(messages).includes(project));report.checks.push('标准 MCP Apps 宿主主题/工具/消息链路通过，只有点击发送才触发消息');
  const ready=await host.evaluate(async token=>{const res=await fetch('/api',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'readiness'})});return res.json();},address.split('#dev=')[1]);assert.equal(ready.ready,true);assert.equal(ready.hostName,'MCP Apps Test Host');report.checks.push('测试宿主真实 ready 回执通过，明确区分 Codex 原生宿主');
  const unbound=await browser.newPage({viewport:{width:760,height:900},colorScheme:'dark'});await unbound.goto(address.replace('/#dev=','/host#dev=')+'&projectRequired=1');const unboundFrame=unbound.frameLocator('iframe');await unboundFrame.getByLabel('项目文件夹的绝对路径').waitFor();await unbound.screenshot({path:join(artifacts,'entrypoint-project-required.png')});await unboundFrame.getByLabel('项目文件夹的绝对路径').fill(project);await unboundFrame.getByRole('button',{name:'打开项目',exact:true}).click();await unboundFrame.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).waitFor();await unbound.close();report.checks.push('菜单无参数启动可显示项目绑定页，缺少 session 时也能绑定并加载当前项目');
+ // Selecting a worktree changes the bound view, never a Git checkout.
+ const originalBranch=git(project,['branch','--show-current']);const worktreeBranch=git(worktree,['branch','--show-current']);
+ await frame.getByRole('combobox',{name:'筛选分支'}).selectOption('refs/heads/codex/component-gallery');
+ await frame.getByRole('button',{name:'Merge design continuation into component documentation gallery',exact:true}).click();await frame.locator('.detail-pane').waitFor();
+ await frame.getByRole('combobox',{name:'查看工作树'}).selectOption(worktree);
+ await frame.locator('.current-branch strong').filter({hasText:'Function'}).waitFor();
+ assert.equal(await frame.getByRole('combobox',{name:'查看工作树'}).inputValue(),worktree);
+ assert.equal(await frame.getByRole('combobox',{name:'筛选分支'}).inputValue(),'');assert.equal(await frame.locator('.detail-pane').count(),0);
+ assert.equal(await frame.locator('.graph-row.current').getAttribute('id'),`commit-${ids.main}`);
+ assert.ok((await frame.locator('.graph-row.current .head-badge').innerText()).includes('工作树 HEAD'));
+ await frame.getByRole('button',{name:'刷新 Git 信息'}).click();await frame.getByRole('button',{name:'刷新 Git 信息'}).waitFor({state:'visible'});
+ assert.equal(await frame.getByRole('combobox',{name:'查看工作树'}).inputValue(),worktree);
+ await frame.getByRole('button',{name:'1 个文件未提交',exact:true}).click();await frame.getByRole('heading',{name:'1 个文件尚未提交'}).waitFor();
+ assert.equal(await frame.locator('.detail-pane .file-path').innerText(),'function-only.txt');
+ await frame.getByRole('button',{name:'交给 Codex',exact:true}).click();await frame.getByRole('dialog').waitFor();
+ const worktreeContext=await frame.locator('.request-context pre').textContent();assert.ok(worktreeContext?.includes(worktree));assert.ok(worktreeContext?.includes(ids.main));
+ await frame.getByRole('button',{name:'关闭请求草稿'}).click();await host.screenshot({path:join(artifacts,'worktree-function-host.png')});
+ await frame.getByRole('combobox',{name:'查看工作树'}).selectOption(project);await frame.locator('.current-branch strong').filter({hasText:'codex/design-sync'}).waitFor();
+ assert.equal(git(project,['branch','--show-current']),originalBranch);assert.equal(git(worktree,['branch','--show-current']),worktreeBranch);
+ report.checks.push('同仓库工作树选择更新 HEAD、未提交与交接上下文，清除旧筛选和详情，不执行 Git 切换');
+ // Failure must leave the original view selected and usable.
+ await page.route('**/api',async route=>{const body=route.request().postDataJSON();if(body.action==='open')await route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:{message:'工作树暂不可用'}})});else await route.continue();});
+ await page.getByRole('combobox',{name:'查看工作树'}).selectOption(worktree);await page.getByRole('alert').filter({hasText:'工作树暂不可用'}).waitFor();
+ assert.equal(await page.getByRole('combobox',{name:'查看工作树'}).inputValue(),project);await page.unroute('**/api');
+ await page.getByRole('button',{name:'刷新 Git 信息'}).click();
+ // A slow detail response from the previous worktree must not reopen its drawer.
+ await page.getByRole('button',{name:'3 个文件未提交',exact:true}).click();await page.getByRole('heading',{name:'3 个文件尚未提交'}).waitFor();await page.getByRole('button',{name:'关闭详情',exact:true}).click();
+ let releaseDetail!:()=>void;let detailStarted!:()=>void;const detailGate=new Promise<void>(yes=>releaseDetail=yes);const started=new Promise<void>(yes=>detailStarted=yes);
+ await page.route('**/api',async route=>{const action=route.request().postDataJSON().action;if(action==='commit'){const response=await route.fetch();detailStarted();await detailGate;await route.fulfill({response});}else if(action==='open'){const response=await route.fetch();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await route.fulfill({response});}else await route.continue();});
+ await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).click();await started;
+ await page.getByRole('combobox',{name:'查看工作树'}).selectOption(worktree);await page.locator('.current-branch strong').filter({hasText:'Function'}).waitFor();releaseDetail();await page.unrouteAll({behavior:'wait'});
+ assert.equal(await page.locator('.detail-pane').count(),0);assert.equal(await page.locator('.graph-row.current').getAttribute('id'),`commit-${ids.main}`);
+ await page.setViewportSize({width:390,height:844});await settle();assert.equal(await page.locator('body').evaluate(e=>e.scrollWidth<=innerWidth),true);await page.screenshot({path:join(artifacts,'worktree-function-narrow.png')});
+ await page.getByRole('combobox',{name:'查看工作树'}).selectOption(project);await page.locator('.current-branch strong').filter({hasText:'codex/design-sync'}).waitFor();await page.setViewportSize({width:1280,height:900});
+ report.checks.push('工作树重绑失败保留原视图，迟到的旧详情不会覆盖新工作树，390px 选择器无横向溢出');
  assert.deepEqual(errors,[]);assert.deepEqual(hostErrors,[]);assert.equal(await fingerprint(),initial);await host.screenshot({path:join(artifacts,'mcp-apps-host.png')});
  // External Git actions are performed only by this fixture, never by the plugin.
  git(project,['stash','push','-u','-m','UI fixture before external switch']);git(project,['switch','codex/component-gallery']);await page.getByRole('button',{name:'刷新 Git 信息'}).click();await page.waitForFunction(()=>document.querySelector('.current-branch strong')?.textContent==='codex/component-gallery');report.checks.push('外部 Git 切换后刷新定位到真实当前分支');

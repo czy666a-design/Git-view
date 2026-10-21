@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { mkdtemp, rm, realpath, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { createFixture } from './fixture.js';
+import { createFixture, fixtureGit } from './fixture.js';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -73,4 +73,36 @@ test('安装配置使用插件根目录作为工作目录并完成真实 MCP 握
   assert.equal(opened.isError,undefined);
   assert.equal((opened.structuredContent as any).projectRequired,true);
  } finally { await client.close(); }
+});
+
+test('聊天显式工作树优先于主项目环境，面板重绑保留聊天并隔离旧会话', async () => {
+ const root = await realpath(await mkdtemp(join(tmpdir(), 'worktree-binding-')));
+ const project = join(root, '主项目'); const worktree = join(root, 'Function 工作树'); const unrelated = join(root, '无关仓库');
+ const bundleRoot = process.env.MCP_BUNDLE_DIR || resolve('dist');
+ const client = new Client({name:'worktree-binding-test',version:'1.0.0'});
+ try {
+  const ids = await createFixture(project, false);
+  fixtureGit(project, ['switch', 'main']);
+  fixtureGit(project, ['worktree', 'add', '-b', 'Function', worktree, ids.current]);
+  await createFixture(unrelated, false);
+  const readHeads = () => [fixtureGit(project, ['rev-parse', 'HEAD']), fixtureGit(worktree, ['rev-parse', 'HEAD']), fixtureGit(project, ['branch', '--show-current']), fixtureGit(worktree, ['branch', '--show-current'])];
+  const heads = readHeads();
+  const env = Object.fromEntries(Object.entries({...process.env, CODEX_WORKSPACE_DIR: project}).filter((entry): entry is [string,string] => entry[1] !== undefined));
+  await client.connect(new StdioClientTransport({command:process.execPath,args:[resolve(bundleRoot,'server.mjs')],cwd:bundleRoot,env,stderr:'pipe'}));
+  const opened = await client.callTool({name:'open_project_versions',arguments:{projectPath:worktree,threadId:'worktree-chat'}});
+  const current = opened.structuredContent as any;
+  assert.equal(current.graph.repository.path, worktree); assert.equal(current.graph.repository.branch, 'Function'); assert.equal(current.graph.repository.head, ids.current);
+  const main = (await client.callTool({name:'open_project_versions',arguments:{projectPath:project,threadId:'original-chat'}})).structuredContent as any;
+  const changed = (await client.callTool({name:'open_project_versions',arguments:{projectPath:worktree,sessionId:main.sessionId,threadId:'different-chat'}})).structuredContent as any;
+  assert.notEqual(changed.sessionId, main.sessionId); assert.equal(changed.graph.repository.branch, 'Function'); assert.equal(changed.graph.repository.head, ids.current);
+  const ready = (await client.callTool({name:'check_project_versions_ready',arguments:{sessionId:changed.sessionId}})).structuredContent as any;
+  assert.equal(ready.threadId, 'original-chat'); assert.equal(ready.projectPath, worktree); assert.equal(ready.ready, false);
+  const original = (await client.callTool({name:'get_git_graph',arguments:{sessionId:main.sessionId}})).structuredContent as any;
+  assert.equal(original.graph.repository.path, project); assert.equal(original.graph.repository.branch, 'main'); assert.equal(original.graph.repository.head, ids.main);
+  const rejected = await client.callTool({name:'open_project_versions',arguments:{projectPath:unrelated,sessionId:changed.sessionId}});
+  assert.equal(rejected.isError, true); assert.equal((rejected.structuredContent as any).error.code, 'WORKTREE_NOT_FOUND');
+  const missing = await client.callTool({name:'open_project_versions',arguments:{projectPath:worktree,sessionId:'expired'}});
+  assert.equal(missing.isError, true); assert.equal((missing.structuredContent as any).error.code, 'SESSION_EXPIRED');
+  assert.deepEqual(readHeads(), heads);
+ } finally { await client.close(); await rm(root, {recursive:true,force:true}); }
 });
