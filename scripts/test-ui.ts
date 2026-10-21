@@ -16,7 +16,7 @@ async function fingerprint(){const hash=createHash('sha256');async function walk
 let browser;let child:ReturnType<typeof spawn>|undefined;const report:any={started:new Date().toISOString(),checks:[]};
 try{
  const initial=await fingerprint();
- child=spawn(process.execPath,['--import','tsx','server/dev.ts',project],{cwd:process.cwd(),env:{...process.env,PORT:'0'},stdio:['ignore','pipe','pipe']});
+ child=spawn(process.execPath,['--import','tsx','server/dev.ts',project],{cwd:process.cwd(),env:{...process.env,PORT:'0',PROJECT_VERSIONS_TEST_RESET:'1',PROJECT_VERSIONS_DEV_THREAD:'ui-test-chat'},stdio:['ignore','pipe','pipe']});
  const address=await new Promise<string>((yes,no)=>{let output='';const timer=setTimeout(()=>no(new Error('server timeout')),15000);child!.stdout!.on('data',chunk=>{output+=chunk;const match=output.match(/http:\/\/127\.0\.0\.1:\d+\/#dev=[a-f0-9]+/);if(match){clearTimeout(timer);yes(match[0]);}});child!.on('exit',code=>{if(code)no(new Error('server exited '+code));});});
  try{browser=await chromium.launch({channel:'chrome',headless:true});}catch{browser=await chromium.launch();}
  const page=await browser.newPage({viewport:{width:1280,height:900},colorScheme:'dark'});const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -93,6 +93,30 @@ try{
  await page.getByRole('combobox',{name:'查看工作树'}).selectOption(project);await page.locator('.current-branch strong').filter({hasText:'codex/design-sync'}).waitFor();await page.setViewportSize({width:1280,height:900});
  report.checks.push('工作树重绑失败保留原视图，迟到的旧详情不会覆盖新工作树，390px 选择器无横向溢出');
  assert.deepEqual(errors,[]);assert.deepEqual(hostErrors,[]);assert.equal(await fingerprint(),initial);await host.screenshot({path:join(artifacts,'mcp-apps-host.png')});
+ // Losing all server sessions reproduces a service restart while the frame stays open.
+ const waitWorktreeReady=()=>host.waitForResponse(async response=>response.url().endsWith('/api')&&response.request().postDataJSON()?.action==='ready'&&(await response.json()).ready===true&&(await response.json()).projectPath===worktree);
+ const initialReady=waitWorktreeReady();
+ await frame.getByRole('combobox',{name:'查看工作树'}).selectOption(worktree);await frame.locator('.current-branch strong').filter({hasText:'Function'}).waitFor();await initialReady;
+ await host.evaluate(async token=>{const res=await fetch('/api',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'expire'})});if(!(await res.json()).expired)throw new Error('session reset failed');},address.split('#dev=')[1]);
+ await frame.getByRole('button',{name:'刷新 Git 信息'}).click();await frame.getByRole('alert').filter({hasText:'连接已过期'}).waitFor();
+ await host.screenshot({path:join(artifacts,'session-expired.png')});
+ let reconnectArguments:any;
+ await host.route('**/api',async route=>{const body=route.request().postDataJSON();if(body.action==='open'&&!body.sessionId)reconnectArguments=body;await route.continue();});
+ const recoveredReady=waitWorktreeReady();await frame.getByRole('button',{name:'重新读取',exact:true}).click();await frame.getByRole('alert').waitFor({state:'hidden'});await recoveredReady;
+ assert.ok(reconnectArguments);assert.equal(reconnectArguments.sessionId,undefined);assert.equal(reconnectArguments.projectPath,worktree);assert.equal(reconnectArguments.threadId,'ui-test-chat');
+ assert.equal(await frame.getByRole('combobox',{name:'查看工作树'}).inputValue(),worktree);assert.equal(await frame.locator('.graph-row.current').getAttribute('id'),`commit-${ids.main}`);
+ await frame.getByRole('button',{name:'1 个文件未提交',exact:true}).click();await frame.getByRole('heading',{name:'1 个文件尚未提交'}).waitFor();assert.equal(await frame.locator('.detail-pane .file-path').innerText(),'function-only.txt');
+ await host.unrouteAll();await host.screenshot({path:join(artifacts,'session-reconnected.png')});report.checks.push('会话丢失后重新读取不带旧 ID，恢复所选 Function 工作树及其未提交修改');
+ // When a fresh open also fails, remove the misleading retry control.
+ await host.evaluate(async token=>{await fetch('/api',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'expire'})});},address.split('#dev=')[1]);
+ await frame.getByRole('button',{name:'刷新 Git 信息'}).click();await frame.getByRole('alert').filter({hasText:'连接已过期'}).waitFor();
+ await host.route('**/api',async route=>{const body=route.request().postDataJSON();if(body.action==='open'&&!body.sessionId)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'NOT_CONNECTED',message:'宿主连接不可用'}})});else await route.continue();});
+ await frame.getByRole('button',{name:'重新读取',exact:true}).click();await frame.getByRole('alert').filter({hasText:'无法重新建立连接'}).waitFor();
+ assert.equal(await frame.getByRole('button',{name:'重新读取',exact:true}).count(),0);assert.equal(await frame.getByRole('button',{name:'刷新 Git 信息'}).isDisabled(),true);
+ await host.screenshot({path:join(artifacts,'session-reconnect-unavailable.png')});await host.unrouteAll();
+ report.checks.push('新建会话仍失败时隐藏重新读取并禁用刷新，提示从当前聊天重新打开');
+ // Return the standalone preview to a valid binding for its remaining external-Git test.
+ await page.reload();await page.locator('.graph-row').first().waitFor();await page.getByRole('alert').filter({hasText:'连接已过期'}).waitFor();await page.getByRole('button',{name:'重新读取',exact:true}).click();await page.getByRole('alert').waitFor({state:'hidden'});
  // External Git actions are performed only by this fixture, never by the plugin.
  git(project,['stash','push','-u','-m','UI fixture before external switch']);git(project,['switch','codex/component-gallery']);await page.getByRole('button',{name:'刷新 Git 信息'}).click();await page.waitForFunction(()=>document.querySelector('.current-branch strong')?.textContent==='codex/component-gallery');report.checks.push('外部 Git 切换后刷新定位到真实当前分支');
  if(process.env.UI_MOTION==='1'){

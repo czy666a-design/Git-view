@@ -76,6 +76,7 @@ good-readme 的 `scripts/inspect_readme_context.py` 和 `references/readme-contr
 
 - **出现项目路径输入页：** 使用了未带入项目目录的入口。推荐回到项目对话说「打开当前项目的 Git 总览」；继续使用该页则需要填写绝对路径。反复重启不会补上缺失的项目上下文。
 - **显示“未能显示”或一直无法连接：** 与路径输入页不同，这是启动或面板连接问题。安装或更新后若仍在使用旧服务，可完全退出 Codex 后重开，再从项目对话打开；仍失败时请 Codex 检查最新启动日志及 `check_project_versions_ready` 回执，不能仅凭“插件已启用”认定连接正常。
+- **连接已过期：** 已有面板保存了工作树路径时，点击“重新读取”会创建新会话并重新读取该目录，保留聊天标识，重新发送连接回执；不会复用失效 ID，也不会退回主工作树。恢复成功后清除旧筛选和详情。若新连接仍失败，隐藏“重新读取”并禁用刷新，提示从当前聊天重新打开；尚未取得项目路径的连接错误也不提供无效的重试按钮。
 - **没有提交关系图：** 确认项目已有 Git 提交。只有未提交文件、尚无第一次提交的仓库没有提交节点；插件不会自动创建提交。
 - **面板分支与当前聊天不同：** 核对“查看工作树”中的实际目录。切换到该聊天的工作树，或从对应聊天重新打开；刷新只读取面板原来绑定的目录。
 - **Codex 操作后图没更新：** 点击刷新。重新打开时，请在目标项目的对话中发起，避免沿用另一个项目的面板。
@@ -156,7 +157,7 @@ codex plugin marketplace add .
 codex plugin add project-versions@project-versions-local
 ```
 
-插件 ID 保持 `project-versions`，显示名为「Git 总览」，版本为 0.2.6。安装包是 `release/project-versions-0.2.6.zip`，运行时不需要 node_modules。
+插件 ID 保持 `project-versions`，显示名为「Git 总览」，版本为 0.2.7。安装包是 `release/project-versions-0.2.7.zip`，运行时不需要 node_modules。
 
 本地插件安装或更新后，需要用新会话加载工具；桌面宿主没有更新本地内容时需重新启动应用。参考 [官方插件文档](https://learn.chatgpt.com/docs/plugins) 与 [本地插件打包说明](https://developers.openai.com/plugins/build/plugins)。CLI 的安装结果与 MCP Apps 测试宿主不等于 Codex 原生面板验收，具体结果见 `docs/verification.md`。
 
@@ -271,6 +272,7 @@ To verify that the plugin versions actually handle documentation checks and loca
 
 - **Project path entry page:** The entry point did not supply a project directory. Return to a project chat and ask to open Git overview, or provide an absolute path on that page. Repeated restarts cannot supply missing project context.
 - **“Could not display” or persistent connection failure:** This is a startup or panel connection problem, unlike the path entry page. If an old service remains after installation or update, fully quit and reopen Codex, then launch from a project chat. If it still fails, ask Codex to inspect startup logs and the `check_project_versions_ready` receipt; “plugin enabled” alone does not prove a working connection.
+- **Session expired:** When the panel has a worktree path, “Read again” creates a fresh session for that directory, preserves the chat identifier, and sends a new ready receipt. It does not reuse the expired ID or fall back to the main worktree. Recovery clears old filters and details. If the fresh connection also fails, the retry button is hidden and refresh is disabled, with instructions to reopen from the current chat. A connection error with no known project path also offers no ineffective retry control.
 - **No commit graph:** Confirm that the project has Git commits. A repository with uncommitted files but no first commit has no commit nodes; the plugin does not create commits automatically.
 - **Panel branch differs from the current chat:** Check the actual directory in “View worktree”. Select the chat's worktree or reopen from that chat; refresh only reads the panel's existing directory.
 - **Graph unchanged after Codex operations:** Refresh the panel. Reopen it from the target project's chat to avoid reusing a panel for another project.
@@ -351,7 +353,7 @@ codex plugin marketplace add .
 codex plugin add project-versions@project-versions-local
 ```
 
-Plugin ID remains `project-versions`, display name is “Git 总览”, and version is 0.2.6. The package is `release/project-versions-0.2.6.zip`; runtime does not require node_modules.
+Plugin ID remains `project-versions`, display name is “Git 总览”, and version is 0.2.7. The package is `release/project-versions-0.2.7.zip`; runtime does not require node_modules.
 
 After local installation or update, load tools in a new session; restart the desktop app if the host retains old content. See the [official plugin documentation](https://learn.chatgpt.com/docs/plugins) and [local packaging guide](https://developers.openai.com/plugins/build/plugins). CLI installation and MCP Apps test-host results do not establish native Codex panel acceptance; see `docs/verification.md` for actual results.
 

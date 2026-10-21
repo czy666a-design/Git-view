@@ -1,6 +1,6 @@
 {
   "name": "project-versions",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "查看真实 Git 分支与提交关系，配套 README 同步和安全 Git 收尾技能。",
   "author": {
     "name": "Project Versions"
