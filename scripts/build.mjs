@@ -4,7 +4,7 @@ await mkdir('dist', { recursive: true });
 const web = await build({ entryPoints: ['web/main.tsx'], bundle: true, write: false, metafile: true, format: 'iife', platform: 'browser', target: 'es2022', minify: true, define: { 'process.env.NODE_ENV': '"production"' } });
 const js = web.outputFiles.find(f => f.path.endsWith('.js'))?.text || web.outputFiles[0].text;
 const css = await readFile('web/style.css', 'utf8');
-await writeFile('dist/panel.html', `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Git 总览</title><style>${css.replace(/<\/style/gi, '<\\/style')}</style></head><body><div id="root"></div><script>${js.replace(/<\/script/gi, '<\\/script')}</script></body></html>`);
+await writeFile('dist/panel.html', `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Gitview</title><style>${css.replace(/<\/style/gi, '<\\/style')}</style></head><body><div id="root"></div><script>${js.replace(/<\/script/gi, '<\\/script')}</script></body></html>`);
 const server = await build({ entryPoints: ['server/mcp.ts'], outfile: 'dist/server.mjs', bundle: true, metafile: true, platform: 'node', format: 'esm', target: 'node22', banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' } });
 const packages = new Set();
 for (const path of [...Object.keys(web.metafile.inputs), ...Object.keys(server.metafile.inputs)]) {

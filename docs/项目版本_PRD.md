@@ -1,4 +1,4 @@
-# Git 总览 PRD（0.2）
+# Gitview PRD（0.2）
 
 ## 背景与目标
 

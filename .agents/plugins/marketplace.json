@@ -1,7 +1,7 @@
 {
   "name": "project-versions-local",
   "interface": {
-    "displayName": "Git 总览 · 本地开发"
+    "displayName": "Gitview · 本地开发"
   },
   "plugins": [
     {

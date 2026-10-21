@@ -1,7 +1,7 @@
 {
   "name": "project-versions",
-  "version": "0.2.5",
-  "description": "在 Codex 工作空间查看真实 Git 分支、提交关系和当前工作树。",
+  "version": "0.2.8",
+  "description": "查看真实 Git 分支与提交关系，配套 README 同步和安全 Git 收尾技能。",
   "author": {
     "name": "Project Versions"
   },
@@ -9,9 +9,9 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Git 总览",
-    "shortDescription": "看清分支关系，找到当前位置",
-    "longDescription": "只读展示当前项目的 Git 提交、分叉、合并与未提交状态。点击查看详情，需要时将所选上下文交给 Codex。",
+    "displayName": "Gitview",
+    "shortDescription": "看清分支关系，同步文档，完成开发收尾",
+    "longDescription": "面板和 MCP 工具只读展示 Git 提交、分叉、合并与未提交状态。随附 good-readme 和 gitwork 技能，由 Codex 使用宿主工具检查并按需更新 README、隔离本次修改及完成本地提交；遵循项目规范和用户选择，不自动推送。",
     "developerName": "Project Versions",
     "category": "Productivity",
     "capabilities": [
@@ -19,7 +19,7 @@
       "Read"
     ],
     "defaultPrompt": [
-      "打开当前项目的 Git 分支总览。"
+      "打开当前项目的 Gitview。"
     ],
     "brandColor": "#7b86ee"
   }
