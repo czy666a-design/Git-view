@@ -8,6 +8,8 @@ import { createFixture } from './fixture.js';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ListRootsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { execFileSync } from 'node:child_process';
+const currentBranch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim() || undefined;
 test('stdio MCP 只暴露读取工具，内嵌资源与真实 ready 状态可读',async()=>{
  const bundleRoot=process.env.MCP_BUNDLE_DIR || resolve('dist');
  const client=new Client({name:'read-only-contract-test',version:'1.0.0'});
@@ -18,7 +20,7 @@ test('stdio MCP 只暴露读取工具，内嵌资源与真实 ready 状态可读
   const resource=await client.readResource({uri:'ui://project-versions/panel.html'});assert.equal(resource.contents[0].mimeType,'text/html;profile=mcp-app');
   assert.ok('text' in resource.contents[0]&&resource.contents[0].text.includes('<title>Git 总览</title>'));
   const result=await client.callTool({name:'open_project_versions',arguments:{projectPath:process.cwd(),threadId:'contract-test'}});const binding=result.structuredContent as any;
-  assert.equal(binding.graph.repository.branch,'main');
+  assert.equal(binding.graph.repository.branch,currentBranch);
   const ready=await client.callTool({name:'check_project_versions_ready',arguments:{sessionId:binding.sessionId}});assert.equal((ready.structuredContent as any).ready,false);
  }finally{await client.close();}
 });
@@ -34,7 +36,7 @@ for (const mode of ['none', 'one', 'multiple'] as const) test(`菜单无参数�
   const result = await client.callTool({ name: 'open_project_versions', arguments: {} });
   assert.ok(!result.isError, '菜单打开不能因缺少 projectPath 失败');
   const data = result.structuredContent as any;
-  if (mode === 'one') { assert.equal(data.graph.repository.path, process.cwd()); assert.equal(data.graph.repository.branch, 'main'); }
+  if (mode === 'one') { assert.equal(data.graph.repository.path, process.cwd()); assert.equal(data.graph.repository.branch, currentBranch); }
   else { assert.equal(data.projectRequired, true); assert.equal(data.sessionId, undefined); }
  } finally { await client.close(); }
 });
