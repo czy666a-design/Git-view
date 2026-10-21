@@ -64,6 +64,8 @@
 
 good-readme 的 `scripts/inspect_readme_context.py` 和 `references/readme-contract.md` 随包提供，路径相对安装后的技能目录。辅助脚本需要 Python 3；不可用时由 Codex 使用宿主工具收集同样的证据。脚本可检查无 Git 项目，并标识祖先仓库，不修改 README 或 Git 索引。
 
+验证插件版是否实际参与文档检查与本地提交，见[配套技能验收指南](docs/skill-verification.md#中文)，包含来源核对、完整请求示例与验收证据。
+
 ### 常见问题
 
 - **出现项目路径输入页：** 使用了未带入项目目录的入口。推荐回到项目对话说「打开当前项目的 Git 总览」；继续使用该页则需要填写绝对路径。反复重启不会补上缺失的项目上下文。
@@ -249,6 +251,8 @@ After implementation and verification, check README first, then review the compl
 In a new session with the plugin loaded, explicitly ask “Use good-readme to check whether this change needs a README update” or “Use gitwork to check this project and complete Git for this task's changes.” For viewing only, continue asking to open the current project's Git overview.
 
 good-readme includes `scripts/inspect_readme_context.py` and `references/readme-contract.md`, resolved relative to the installed skill directory. The helper requires Python 3; if unavailable, Codex can collect equivalent evidence using host tools. The script supports non-Git projects, identifies ancestor repositories, and does not modify README or the Git index.
+
+To verify that the plugin versions actually handle documentation checks and local commits, see the [bundled skill verification guide](docs/skill-verification.md#english) for provenance checks, a complete request, and acceptance evidence.
 
 ### Troubleshooting
 
