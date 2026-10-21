@@ -5,13 +5,20 @@ import { createHash } from 'node:crypto';
 import { mkdtemp,mkdir,readFile,writeFile,rm,realpath,readdir } from 'node:fs/promises';
 import { tmpdir,homedir } from 'node:os';
 import { join,resolve } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, type Page, type FrameLocator } from 'playwright';
+async function selectValue(scope: Page | FrameLocator, label: string, value: string | { index: number }) {
+ const control=scope.getByRole('combobox',{name:label});await control.click();
+ const options=scope.getByRole('option');
+ const index=typeof value==='string' ? await options.evaluateAll((elements,target)=>elements.findIndex(el=>el.getAttribute('data-value')===target),value) : value.index;
+ assert.ok(index>=0,`missing option: ${label}`);await options.nth(index).click();
+}
 import { createFixture,fixtureGit as git } from '../tests/fixture.js';
 const root=await realpath(await mkdtemp(join(tmpdir(),'git-overview-ui-')));const project=join(root,'design-system');const ids=await createFixture(project);
+const worktree=join(root,'Function 工作树');git(project,['worktree','add','-b','Function',worktree,ids.main]);await writeFile(join(worktree,'function-only.txt'),'Function working tree\n');
 const longRemote='desktop/desktop/home-orbit-very-long-feature-name-for-component-documentation-and-design-sync';
 for(const name of [longRemote,'desktop/desktop/home-orbit','backup/component-gallery'])git(project,['update-ref',`refs/remotes/${name}`,ids.current]);
 const artifacts=resolve(process.env.UI_ARTIFACTS || 'artifacts/git-overview');await mkdir(artifacts,{recursive:true});
-async function fingerprint(){const hash=createHash('sha256');async function walk(path:string){for(const file of(await readdir(path,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const full=join(path,file.name);hash.update(full);if(file.isDirectory())await walk(full);else if(file.isFile())hash.update(await readFile(full));}}await walk(project);return hash.digest('hex');}
+async function fingerprint(){const hash=createHash('sha256');async function walk(path:string){for(const file of(await readdir(path,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){const full=join(path,file.name);hash.update(full);if(file.isDirectory())await walk(full);else if(file.isFile())hash.update(await readFile(full));}}await walk(project);await walk(worktree);return hash.digest('hex');}
 let browser;let child:ReturnType<typeof spawn>|undefined;const report:any={started:new Date().toISOString(),checks:[]};
 try{
  const initial=await fingerprint();
@@ -24,6 +31,26 @@ try{
  assert.equal(await page.locator('.detail-pane').count(),0);assert.equal(await page.locator('.graph-row').count(),10);
  assert.equal(await page.getByRole('button',{name:/保存|恢复|截图|预览/}).count(),0);report.checks.push('零配置打开真实多分支图，默认无详情或 Git 操作入口');
  await page.screenshot({path:join(artifacts,'overview-dark.png')});
+ // Shared controls: distinguish pointer activation, keyboard focus and committed selection.
+ const worktreeControl=page.getByRole('combobox',{name:'查看工作树'});
+ await worktreeControl.click();assert.equal(await worktreeControl.evaluate(el=>getComputedStyle(el).outlineStyle),'none');
+ await page.getByRole('listbox',{name:'查看工作树'}).waitFor();
+ assert.equal(await page.getByRole('option',{selected:true}).count(),1);
+ const menuGeometry=async()=>page.locator('.select-menu').evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight&&el.scrollWidth<=el.clientWidth;});
+ assert.equal(await menuGeometry(),true);await settle();await page.screenshot({path:join(artifacts,'select-dark.png')});
+ await page.keyboard.press('Escape');assert.equal(await worktreeControl.getAttribute('aria-expanded'),'false');
+ await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
+ assert.equal(await worktreeControl.evaluate(el=>getComputedStyle(el).outlineWidth),'1px');
+ await page.keyboard.press('ArrowDown');await page.keyboard.press('End');await page.keyboard.press('Home');
+ assert.equal(await worktreeControl.getAttribute('aria-activedescendant'),await page.getByRole('option').first().getAttribute('id'));
+ await page.keyboard.press('Escape');assert.equal(await worktreeControl.getAttribute('data-value'),project);
+ await worktreeControl.click();await page.locator('.brand').click();assert.equal(await page.getByRole('listbox').count(),0);
+ await page.emulateMedia({colorScheme:'light'});await worktreeControl.click();await settle();await page.screenshot({path:join(artifacts,'select-light.png')});await page.keyboard.press('Escape');
+ await page.setViewportSize({width:390,height:844});await worktreeControl.click();assert.equal(await menuGeometry(),true);await settle();await page.screenshot({path:join(artifacts,'select-narrow.png')});await page.keyboard.press('Escape');
+ await page.setViewportSize({width:640,height:450});await worktreeControl.click();assert.equal(await menuGeometry(),true);await settle();await page.screenshot({path:join(artifacts,'select-zoom-area.png')});await page.keyboard.press('Escape');
+ await page.setViewportSize({width:1280,height:900});await page.emulateMedia({colorScheme:'dark'});
+ report.checks.push('共享选择器明暗/390px/放大视口无溢出，鼠标无粗外圈，键盘单层1px焦点，方向/Home/End/Escape与外部关闭可用');
+
  const verifyPopover=async()=>{
   await page.locator('.graph-row.current .extra-refs').click();await page.locator('.ref-popover').waitFor();await settle();
   const geometry=await page.locator('.ref-popover').evaluate(el=>{const rect=el.getBoundingClientRect();const buttons=[...el.querySelectorAll('button')];const last=buttons.at(-1)!.getBoundingClientRect();const note=el.querySelector('p')!.getBoundingClientRect();let covered=true;for(let y=rect.top+12;y<rect.bottom-12;y+=15)for(let x=rect.left+12;x<rect.right-12;x+=30)if(!el.contains(document.elementFromPoint(x,y)))covered=false;return {covered,contained:rect.left>=0&&rect.right<=innerWidth&&rect.top>=0&&rect.bottom<=innerHeight,ordered:note.top>=last.bottom,wrapped:el.scrollWidth<=el.clientWidth};});
@@ -34,11 +61,11 @@ try{
  await page.emulateMedia({colorScheme:'light'});await settle();await page.screenshot({path:join(artifacts,'overview-light.png')});await page.emulateMedia({colorScheme:'dark'});
  await page.getByRole('checkbox',{name:'显示远程'}).check();await page.getByRole('button',{name:'Explore remote-only component experiments',exact:true}).waitFor();report.checks.push('远程开关显示真实远程独有分支');
  await page.getByRole('checkbox',{name:'显示远程'}).uncheck();await page.getByRole('button',{name:'Explore remote-only component experiments',exact:true}).waitFor({state:'hidden'});
- await page.getByRole('combobox',{name:'筛选分支'}).selectOption('refs/heads/main');await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).waitFor({state:'hidden'});await page.getByRole('button',{name:'定位当前',exact:true}).click();await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).waitFor();report.checks.push('分支筛选限定历史，定位当前位置可回到包含 HEAD 的图');
+ await page.getByRole('combobox',{name:'筛选分支'}).focus();await page.keyboard.press('m');await page.keyboard.press('Enter');await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).waitFor({state:'hidden'});await page.getByRole('button',{name:'定位当前',exact:true}).click();await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).waitFor();report.checks.push('分支筛选限定历史，定位当前位置可回到包含 HEAD 的图');
  await page.getByRole('button',{name:'codex/component-gallery',exact:true}).click();await page.getByRole('heading',{name:'codex/component-gallery',exact:true}).waitFor();await settle();await page.screenshot({path:join(artifacts,'branch-detail.png')});report.checks.push('分支详情保留主图，展示独有提交计数与最新位置');
  await page.getByRole('button',{name:'关闭详情',exact:true}).click();assert.equal(await page.locator('.detail-pane').count(),0);assert.equal(await page.locator('.graph-row.active').count(),1);report.checks.push('关闭详情保留选择与图的位置');
  await page.getByRole('button',{name:'Merge design continuation into component documentation gallery',exact:true}).click();await page.getByRole('combobox',{name:'选择父提交'}).waitFor();await settle();await page.screenshot({path:join(artifacts,'commit-detail.png')});
- const firstFiles=await page.locator('.detail-pane .file-path').allTextContents();await page.getByRole('combobox',{name:'选择父提交'}).selectOption({index:1});await page.waitForFunction(before=>JSON.stringify([...document.querySelectorAll('.detail-pane .file-path')].map(e=>e.textContent))!==JSON.stringify(before),firstFiles);report.checks.push('合并提交可切换实际父节点比较');
+ const firstFiles=await page.locator('.detail-pane .file-path').allTextContents();await page.getByRole('combobox',{name:'选择父提交'}).click();await page.keyboard.press('Escape');assert.equal(await page.locator('.detail-pane').count(),1);await page.getByRole('combobox',{name:'选择父提交'}).click();await page.keyboard.press('End');await page.keyboard.press('Enter');await page.waitForFunction(before=>JSON.stringify([...document.querySelectorAll('.detail-pane .file-path')].map(e=>e.textContent))!==JSON.stringify(before),firstFiles);report.checks.push('合并提交可切换实际父节点比较');
  await page.getByRole('button',{name:'关闭详情',exact:true}).click();await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).click();await page.locator('.detail-pane .file-toggle').first().waitFor();
  await page.locator('.detail-pane .file-toggle').filter({hasText:'src/sync.ts'}).click();await page.locator('.diff-content pre').waitFor();await settle();await page.screenshot({path:join(artifacts,'file-diff.png')});assert.ok((await page.locator('.diff-content pre').innerText()).includes('bidirectional'));report.checks.push('点击文件后按需读取真实源码差异');
  await page.getByRole('button',{name:'交给 Codex',exact:true}).click();await page.getByRole('dialog').waitFor();await page.getByLabel('你想让 Codex 做什么？').fill('请解释这次提交与当前分支的关系。');assert.equal(await page.locator('.request-context').getAttribute('open'),null);assert.ok((await page.locator('.request-context pre').textContent())?.includes(ids.current));await settle();await page.screenshot({path:join(artifacts,'handoff-draft.png')});await page.getByRole('button',{name:'关闭请求草稿'}).click();report.checks.push('交给 Codex 先展示可编辑请求，附带准确所选对象与当前 HEAD');
@@ -56,6 +83,41 @@ try{
  await frame.getByLabel('你想让 Codex 做什么？').fill('请比较这个提交与当前分支，先检查 Git 状态。');await frame.getByRole('button',{name:'发送到当前聊天',exact:true}).click();await host.waitForFunction(()=>((window as any).__messages||[]).length===1);const messages=await host.evaluate(()=>(window as any).__messages);assert.ok(JSON.stringify(messages).includes(ids.current));assert.ok(JSON.stringify(messages).includes(project));report.checks.push('标准 MCP Apps 宿主主题/工具/消息链路通过，只有点击发送才触发消息');
  const ready=await host.evaluate(async token=>{const res=await fetch('/api',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'readiness'})});return res.json();},address.split('#dev=')[1]);assert.equal(ready.ready,true);assert.equal(ready.hostName,'MCP Apps Test Host');report.checks.push('测试宿主真实 ready 回执通过，明确区分 Codex 原生宿主');
  const unbound=await browser.newPage({viewport:{width:760,height:900},colorScheme:'dark'});await unbound.goto(address.replace('/#dev=','/host#dev=')+'&projectRequired=1');const unboundFrame=unbound.frameLocator('iframe');await unboundFrame.getByLabel('项目文件夹的绝对路径').waitFor();await unbound.screenshot({path:join(artifacts,'entrypoint-project-required.png')});await unboundFrame.getByLabel('项目文件夹的绝对路径').fill(project);await unboundFrame.getByRole('button',{name:'打开项目',exact:true}).click();await unboundFrame.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).waitFor();await unbound.close();report.checks.push('菜单无参数启动可显示项目绑定页，缺少 session 时也能绑定并加载当前项目');
+ // Selecting a worktree changes the bound view, never a Git checkout.
+ const originalBranch=git(project,['branch','--show-current']);const worktreeBranch=git(worktree,['branch','--show-current']);
+ await selectValue(frame,'筛选分支','refs/heads/codex/component-gallery');
+ await frame.getByRole('button',{name:'Merge design continuation into component documentation gallery',exact:true}).click();await frame.locator('.detail-pane').waitFor();
+ await selectValue(frame,'查看工作树',worktree);
+ await frame.locator('.current-branch strong').filter({hasText:'Function'}).waitFor();
+ assert.equal(await frame.getByRole('combobox',{name:'查看工作树'}).getAttribute('data-value'),worktree);
+ assert.equal(await frame.getByRole('combobox',{name:'筛选分支'}).getAttribute('data-value'),'');assert.equal(await frame.locator('.detail-pane').count(),0);
+ assert.equal(await frame.locator('.graph-row.current').getAttribute('id'),`commit-${ids.main}`);
+ assert.ok((await frame.locator('.graph-row.current .head-badge').innerText()).includes('工作树 HEAD'));
+ await frame.getByRole('button',{name:'刷新 Git 信息'}).click();await frame.getByRole('button',{name:'刷新 Git 信息'}).waitFor({state:'visible'});
+ assert.equal(await frame.getByRole('combobox',{name:'查看工作树'}).getAttribute('data-value'),worktree);
+ await frame.getByRole('button',{name:'1 个文件未提交',exact:true}).click();await frame.getByRole('heading',{name:'1 个文件尚未提交'}).waitFor();
+ assert.equal(await frame.locator('.detail-pane .file-path').innerText(),'function-only.txt');
+ await frame.getByRole('button',{name:'交给 Codex',exact:true}).click();await frame.getByRole('dialog').waitFor();
+ const worktreeContext=await frame.locator('.request-context pre').textContent();assert.ok(worktreeContext?.includes(worktree));assert.ok(worktreeContext?.includes(ids.main));
+ await frame.getByRole('button',{name:'关闭请求草稿'}).click();await host.screenshot({path:join(artifacts,'worktree-function-host.png')});
+ await selectValue(frame,'查看工作树',project);await frame.locator('.current-branch strong').filter({hasText:'codex/design-sync'}).waitFor();
+ assert.equal(git(project,['branch','--show-current']),originalBranch);assert.equal(git(worktree,['branch','--show-current']),worktreeBranch);
+ report.checks.push('同仓库工作树选择更新 HEAD、未提交与交接上下文，清除旧筛选和详情，不执行 Git 切换');
+ // Failure must leave the original view selected and usable.
+ await page.route('**/api',async route=>{const body=route.request().postDataJSON();if(body.action==='open')await route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:{message:'工作树暂不可用'}})});else await route.continue();});
+ await selectValue(page,'查看工作树',worktree);await page.getByRole('alert').filter({hasText:'工作树暂不可用'}).waitFor();
+ assert.equal(await page.getByRole('combobox',{name:'查看工作树'}).getAttribute('data-value'),project);await page.unroute('**/api');
+ await page.getByRole('button',{name:'刷新 Git 信息'}).click();
+ // A slow detail response from the previous worktree must not reopen its drawer.
+ await page.getByRole('button',{name:'3 个文件未提交',exact:true}).click();await page.getByRole('heading',{name:'3 个文件尚未提交'}).waitFor();await page.getByRole('button',{name:'关闭详情',exact:true}).click();
+ let releaseDetail!:()=>void;let detailStarted!:()=>void;const detailGate=new Promise<void>(yes=>releaseDetail=yes);const started=new Promise<void>(yes=>detailStarted=yes);
+ await page.route('**/api',async route=>{const action=route.request().postDataJSON().action;if(action==='commit'){const response=await route.fetch();detailStarted();await detailGate;await route.fulfill({response});}else if(action==='open'){const response=await route.fetch();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await route.fulfill({response});}else await route.continue();});
+ await page.getByRole('button',{name:'Refine bidirectional sync and component validation',exact:true}).click();await started;
+ await selectValue(page,'查看工作树',worktree);await page.locator('.current-branch strong').filter({hasText:'Function'}).waitFor();releaseDetail();await page.unrouteAll({behavior:'wait'});
+ assert.equal(await page.locator('.detail-pane').count(),0);assert.equal(await page.locator('.graph-row.current').getAttribute('id'),`commit-${ids.main}`);
+ await page.setViewportSize({width:390,height:844});await settle();assert.equal(await page.locator('body').evaluate(e=>e.scrollWidth<=innerWidth),true);await page.screenshot({path:join(artifacts,'worktree-function-narrow.png')});
+ await selectValue(page,'查看工作树',project);await page.locator('.current-branch strong').filter({hasText:'codex/design-sync'}).waitFor();await page.setViewportSize({width:1280,height:900});
+ report.checks.push('工作树重绑失败保留原视图，迟到的旧详情不会覆盖新工作树，390px 选择器无横向溢出');
  assert.deepEqual(errors,[]);assert.deepEqual(hostErrors,[]);assert.equal(await fingerprint(),initial);await host.screenshot({path:join(artifacts,'mcp-apps-host.png')});
  // External Git actions are performed only by this fixture, never by the plugin.
  git(project,['stash','push','-u','-m','UI fixture before external switch']);git(project,['switch','codex/component-gallery']);await page.getByRole('button',{name:'刷新 Git 信息'}).click();await page.waitForFunction(()=>document.querySelector('.current-branch strong')?.textContent==='codex/component-gallery');report.checks.push('外部 Git 切换后刷新定位到真实当前分支');

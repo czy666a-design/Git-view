@@ -17,8 +17,10 @@ const server = createServer(async (req,res) => {
     try {
       let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 100000) throw new Error('请求过大'); }
       const { action, ...params } = JSON.parse(body);
-      if (action === 'open' && params.projectPath !== binding.graph.repository.path) throw new Error('开发宿主仅绑定当前测试项目。');
-      const data = action === 'binding' || action === 'open' ? { ...binding, graph: await service.reader.graph(binding.graph.repository.path) } : await service.call(action, { ...params, sessionId: binding.sessionId });
+      let data;
+      if (action === 'binding') data = { ...binding, graph: await service.reader.graph(binding.graph.repository.path) };
+      else if (action === 'open') data = await service.openWorktree(params.sessionId || binding.sessionId, params.projectPath);
+      else data = await service.call(action, { ...params, sessionId: params.sessionId || binding.sessionId });
       res.setHeader('Content-Type','application/json'); res.end(JSON.stringify(data));
     } catch(e:any) { res.writeHead(400,{'Content-Type':'application/json'}).end(JSON.stringify({error:{code:e.code || 'ERROR',message:e.message}})); }
     return;

@@ -1,9 +1,9 @@
 {
   "name": "project-versions",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
-  "description": "在 Codex 工作空间查看真实 Git 分支、提交关系和当前工作树。",
+  "description": "查看真实 Git 分支与提交关系，配套 README 同步和安全 Git 收尾技能。",
   "scripts": {
     "dev": "node --import tsx server/dev.ts",
     "demo": "node --import tsx scripts/demo.ts",
